@@ -1,0 +1,15 @@
+{
+  "name": "kaoyan-408-coach",
+  "version": "1.0.0",
+  "private": true,
+  "description": "计算机考研 408 智能学习助手：打卡 / 掌握度评估 / 动态路线规划 / 热点推送",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed": "node scripts/seed-demo.js",
+    "test": "node scripts/test-engine.js"
+  },
+  "engines": { "node": ">=22" }
+}

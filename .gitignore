@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# 本地大模型密钥（勿提交）
+config/llm.json
+
+# 本地数据库（运行时自动创建；演示数据用 npm run seed 重建）
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# 日志与临时文件
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
