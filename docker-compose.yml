@@ -1,0 +1,20 @@
+services:
+  kaoyan408:
+    build: .
+    image: kaoyan-408-coach:latest
+    container_name: kaoyan408
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4080"
+      KY_DB: /var/lib/kaoyan/kaoyan.db
+    # 只绑定宿主机回环，由 nginx 反代对外；不直接暴露到公网
+    ports:
+      - "127.0.0.1:${KAOYAN_HOST_PORT:-8081}:4080"
+    volumes:
+      - kaoyan-data:/var/lib/kaoyan
+
+volumes:
+  kaoyan-data:

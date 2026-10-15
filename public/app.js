@@ -8,8 +8,13 @@ const SUB_COLOR = { ds: 'var(--ds)', co: 'var(--co)', os: 'var(--os)', cn: 'var(
 const SUB_TAG = { ds: 'ds', co: 'co', os: 'os', cn: 'cn' };
 const STATE_TEXT = { mastered: '已掌握', familiar: '较熟练', learning: '学习中', due: '待复习', notstarted: '未开始' };
 
+// 部署基址自适应：根路径("/")与子路径("/kaoyan/")部署都能正确请求
+const API_BASE = (() => {
+  try { return new URL('./', document.baseURI).pathname; } catch (_) { return '/'; }
+})();
+const abs = (p) => (/^https?:/i.test(p) ? p : API_BASE + String(p).replace(/^\//, ''));
 const api = async (p, opts) => {
-  const r = await fetch(p, opts);
+  const r = await fetch(abs(p), opts);
   const t = await r.text();
   let j; try { j = JSON.parse(t); } catch (_) { throw new Error('响应异常: ' + t.slice(0, 120)); }
   if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
