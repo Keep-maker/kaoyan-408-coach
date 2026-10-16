@@ -12,15 +12,20 @@ const llm = require('./lib/llm');
 const agentBrain = require('./lib/agent-brain');
 const agentReply = require('./lib/agent-reply');
 const agentCore = require('./lib/agent');
+const session = require('./lib/session');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const als = new AsyncLocalStorage();
 
 const PORT = Number(process.env.PORT || 4080);
 const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // ---------- 工具 ----------
-const send = (res, code, body, type = 'application/json; charset=utf-8') => {
+const send = (res, code, body, type = 'application/json; charset=utf-8', extra = null) => {
   const data = type.includes('json') ? JSON.stringify(body) : body;
-  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store' };
+  if (extra) Object.assign(headers, extra);
+  res.writeHead(code, headers);
   res.end(data);
 };
 const safeJson = (s) => { try { return JSON.parse(s); } catch (_) { return []; } };
@@ -31,14 +36,37 @@ const readBody = (req) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
-// 单用户模式：默认用户
+// 创建一份全新的用户（每个访客一份独立数据空间）
+function createUser() {
+  q.run(`INSERT INTO users (name, exam_date, daily_minutes, target_score, start_date) VALUES (?,?,?,?,?)`,
+    '考研同学', E.addDays(E.todayStr(), 66), 240, 110, E.todayStr());
+  return q.get('SELECT * FROM users ORDER BY id DESC LIMIT 1');
+}
+
+// 当前请求的用户：由 Cookie 中的 sid 决定（数据隔离的核心）
+// - 有合法 sid → 对应 user
+// - 无 / 非法 sid → 新建用户并签发新 sid（在响应里 Set-Cookie）
 function currentUser() {
-  let u = q.get('SELECT * FROM users ORDER BY id LIMIT 1');
-  if (!u) {
-    q.run(`INSERT INTO users (name, exam_date, daily_minutes, target_score, start_date) VALUES (?,?,?,?,?)`,
-      '考研同学', E.addDays(E.todayStr(), 66), 240, 110, E.todayStr());
-    u = q.get('SELECT * FROM users ORDER BY id LIMIT 1');
+  const ctx = als.getStore();
+  if (ctx) {
+    if (ctx.user) return ctx.user;
+    let uid2 = session.userIdFor(ctx.sid);
+    if (uid2) {
+      const u = q.get('SELECT * FROM users WHERE id=?', uid2);
+      if (u) { ctx.user = u; return u; }
+    }
+    // 新访客 / sid 失效 → 分配独立用户
+    const nu = createUser();
+    const sid = ctx.sid && !session.userIdFor(ctx.sid) ? ctx.sid : session.newSid();
+    session.bind(sid, nu.id);
+    ctx.sid = sid;
+    ctx.newCookie = true;
+    ctx.user = nu;
+    return nu;
   }
+  // 无请求上下文（脚本 / 启动自检）：退化为首个用户，没有则创建
+  let u = q.get('SELECT * FROM users ORDER BY id LIMIT 1');
+  if (!u) u = createUser();
   return u;
 }
 const uid = () => currentUser().id;
@@ -230,9 +258,10 @@ route('GET', '/api/advice', async (req, url) => {
     const raw = await llm.chat([
       { role: 'system', content: '你是严谨的计算机考研辅导老师，只输出合法 JSON。' },
       { role: 'user', content: prompt }
-    ], { temperature: 0.5, maxTokens: 1600 });
+    ], { temperature: 0.5, maxTokens: 4000, timeoutMs: 150000 });
     const m = raw.match(/\[[\s\S]*\]/);
     const items = m ? JSON.parse(m[0]) : [];
+    if (!items.length) throw new Error('LLM_EMPTY_ADVICE');   // 空/解析失败 → 走本地回退
     const merged = { generatedAt: new Date().toISOString(), engine: 'llm:' + llm.info().model,
       items: [...items, ...local.items], localItems: local.items };
     q.run('INSERT INTO advice_cache (user_id,date,content,engine) VALUES (?,?,?,?)', u, E.todayStr(), JSON.stringify(merged), merged.engine);
@@ -441,18 +470,35 @@ function serveStatic(res, urlPath) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://' + (req.headers.host || 'localhost'));
   const key = req.method + ' ' + url.pathname;
-  const handler = routes[key];
-  if (!handler) {
-    if (url.pathname.startsWith('/api/')) return send(res, 404, { error: '未知接口: ' + url.pathname });
-    return serveStatic(res, url.pathname);
-  }
-  try {
-    const out = await handler(req, url);
-    send(res, 200, out);
-  } catch (e) {
-    console.error('[API ERROR]', key, e.message);
-    send(res, 400, { error: e.message });
-  }
+
+  // —— 会话上下文：每个请求独立识别访客，实现数据隔离 ——
+  const cookies = session.parseCookies(req);
+  const ctx = { sid: cookies[session.COOKIE] || null, user: null, newCookie: false };
+  if (ctx.sid) session.touch(ctx.sid);
+
+  const setCookieIfNew = () => {
+    if (ctx.newCookie && ctx.sid) {
+      return { 'Set-Cookie': session.cookieHeader(ctx.sid) };
+    }
+    return null;
+  };
+
+  await als.run(ctx, async () => {
+    const handler = routes[key];
+    if (!handler) {
+      if (url.pathname.startsWith('/api/')) {
+        return send(res, 404, { error: '未知接口: ' + url.pathname }, undefined, setCookieIfNew());
+      }
+      return serveStatic(res, url.pathname);
+    }
+    try {
+      const out = await handler(req, url);
+      send(res, 200, out, undefined, setCookieIfNew());
+    } catch (e) {
+      console.error('[API ERROR]', key, e.message);
+      send(res, 400, { error: e.message }, undefined, setCookieIfNew());
+    }
+  });
 });
 
 if (require.main === module) {
