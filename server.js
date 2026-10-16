@@ -13,6 +13,7 @@ const agentBrain = require('./lib/agent-brain');
 const agentReply = require('./lib/agent-reply');
 const agentCore = require('./lib/agent');
 const session = require('./lib/session');
+const { stripEmoji } = require('./lib/text');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const als = new AsyncLocalStorage();
 
@@ -22,7 +23,18 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // ---------- 工具 ----------
 const send = (res, code, body, type = 'application/json; charset=utf-8', extra = null) => {
-  const data = type.includes('json') ? JSON.stringify(body) : body;
+  // 出口净化：递归去掉字符串中的 emoji（模型回复也无法绕过）
+  const clean = (v) => {
+    if (typeof v === 'string') return stripEmoji(v);
+    if (Array.isArray(v)) return v.map(clean);
+    if (v && typeof v === 'object') {
+      const o = {};
+      for (const k of Object.keys(v)) o[k] = clean(v[k]);
+      return o;
+    }
+    return v;
+  };
+  const data = type.includes('json') ? JSON.stringify(clean(body)) : body;
   const headers = { 'Content-Type': type, 'Cache-Control': 'no-store' };
   if (extra) Object.assign(headers, extra);
   res.writeHead(code, headers);

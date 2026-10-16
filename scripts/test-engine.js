@@ -1,6 +1,6 @@
 // ============================================================
-//  引擎单元测试（纯本地，不依赖网络与端口，使用临时数据库）
-//  运行：node scripts/test-engine.js  或  npm test
+// 引擎单元测试（纯本地，不依赖网络与端口，使用临时数据库）
+// 运行：node scripts/test-engine.js 或 npm test
 // ============================================================
 const os = require('node:os');
 const path = require('node:path');
@@ -16,8 +16,8 @@ const S = require('../data/syllabus');
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
-  if (cond) { pass += 1; console.log('  ✓ ' + name + (extra ? '  [' + extra + ']' : '')); }
-  else { fail += 1; console.log('  ✗ ' + name + (extra ? '  [' + extra + ']' : '')); }
+ if (cond) { pass += 1; console.log(' ' + name + (extra ? ' [' + extra + ']' : '')); }
+ else { fail += 1; console.log(' ' + name + (extra ? ' [' + extra + ']' : '')); }
 };
 const section = (t) => console.log('\n' + t);
 
@@ -55,7 +55,7 @@ ok('遗忘有下限（不会清零）', decB >= 0.9 * 0.15 - 1e-9, '30天后=' +
 // ---------- 3. 空库评估 ----------
 section('3. 评估接口（空数据）');
 q.run(`INSERT INTO users (name, exam_date, daily_minutes, target_score, start_date) VALUES (?,?,?,?,?)`,
-  '测试考生', E.addDays(E.todayStr(), 66), 240, 110, E.todayStr());
+ '测试考生', E.addDays(E.todayStr(), 66), 240, 110, E.todayStr());
 const u = q.get('SELECT * FROM users ORDER BY id LIMIT 1').id;
 
 const a0 = E.assessment(u);
@@ -65,7 +65,7 @@ ok('四科评估齐全', a0.subjects.length === 4);
 ok('剩余学时=总学时', Math.abs(a0.pace.remainingHours - S.TOTAL_HOURS) < 1, a0.pace.remainingHours + 'h');
 ok('有提分空间估算', a0.overall.potentialScore > 0, '最多可提 ' + a0.overall.potentialScore + ' 分');
 ok('目标缺口计算正确', a0.overall.targetGap === a0.overall.target - a0.overall.estimated,
-  a0.overall.estimated + ' / ' + a0.overall.target);
+ a0.overall.estimated + ' / ' + a0.overall.target);
 
 // ---------- 4. 一次学习 → 一次复习的闭环 ----------
 section('4. 学习闭环：学习 → 测验 → 掌握度变化 → 下次复习');
@@ -107,7 +107,7 @@ const rp = E.routePreview(u, 14);
 ok('未来路线 14 天', rp.days.length === 14);
 ok('路线含复习与新学', rp.days.some((d) => d.items.some((i) => i.kind === 'review')));
 ok('路线完成度递增', rp.days[rp.days.length - 1].pct >= rp.days[0].pct,
-  rp.days[0].pct + '% → ' + rp.days[13].pct + '%');
+ rp.days[0].pct + '% → ' + rp.days[13].pct + '%');
 
 // 时间极紧 → 应自动切到保分突击
 q.run('UPDATE users SET exam_date=? WHERE id=?', E.addDays(E.todayStr(), 5), u);
@@ -121,25 +121,25 @@ section('6. 学习建议（本地规则引擎）');
 const adv = E.localAdvice(u);
 ok('生成建议条目', adv.items.length >= 3, adv.items.length + ' 条');
 ok('覆盖进度/薄弱/科目/目标', ['pace', 'weak', 'subject', 'score'].every((t) => adv.items.some((i) => i.type === t)),
-  adv.items.map((i) => i.type).join(','));
+ adv.items.map((i) => i.type).join(','));
 ok('每条建议都有可执行文本', adv.items.every((i) => i.text && i.text.length > 10));
 ok('引擎标记为 local', adv.engine === 'local');
 
 // 人为制造一个「已到期」知识点，检查复习提醒与优先级排序
 q.run(`UPDATE mastery SET next_review=?, p=0.5, stability=3 WHERE user_id=? AND point_id=?`,
-  E.addDays(E.todayStr(), -3), u, pid);
+ E.addDays(E.todayStr(), -3), u, pid);
 q.run(`INSERT INTO mastery (user_id, point_id, p, stability, reps, last_at, next_review)
-       VALUES (?,?,?,?,?,?,?)`,
-  u, 'ds6-1', 0.7, 5, 2, E.addDays(E.todayStr(), -12), E.addDays(E.todayStr(), -1));
+ VALUES (?,?,?,?,?,?,?)`,
+ u, 'ds6-1', 0.7, 5, 2, E.addDays(E.todayStr(), -12), E.addDays(E.todayStr(), -1));
 const dueStates = E.pointStates(u).filter((x) => x.state === 'due');
 ok('到期知识点被识别', dueStates.length >= 2, dueStates.length + ' 个到期');
 const adv2 = E.localAdvice(u);
 const rev = adv2.items.find((i) => i.type === 'review');
 ok('产生复习提醒建议', Boolean(rev), rev ? rev.title : '缺失');
 const order = E.pointStates(u).filter((x) => x.state === 'due')
-  .sort((x, y) => (y.weight * (1 - y.p)) - (x.weight * (1 - x.p)));
+ .sort((x, y) => (y.weight * (1 - y.p)) - (x.weight * (1 - x.p)));
 ok('到期清单按「权重×缺口」排序', order.length >= 2 && rev &&
-  rev.text.includes(order[0].name), rev ? rev.text.slice(0, 46) + '…' : '');
+ rev.text.includes(order[0].name), rev ? rev.text.slice(0, 46) + '…' : '');
 
 // ---------- 7. 打卡连续性 ----------
 section('7. 打卡逻辑');
@@ -155,7 +155,7 @@ ok('同一天重复打卡被约束', dup);
 
 // ---------- 汇总 ----------
 console.log('\n========================================');
-console.log(`  测试完成：通过 ${pass} 项，失败 ${fail} 项`);
+console.log(` 测试完成：通过 ${pass} 项，失败 ${fail} 项`);
 console.log('========================================');
 ['', '-wal', '-shm'].forEach((s) => { try { fs.unlinkSync(TMP + s); } catch (_) {} });
 process.exit(fail ? 1 : 0);

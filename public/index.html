@@ -5,47 +5,47 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>408 考研学习助手 · 智能督导与动态规划</title>
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='72' font-weight='bold' fill='%232f6bff'>408</text></svg>">
 </head>
 <body>
 <div class="app">
-  <aside class="side">
-    <div class="logo">
-      <div class="mark">408</div>
-      <div><b>考研学习助手</b><span>计算机专业课 · 智能督导</span></div>
-    </div>
-    <nav class="nav" id="nav">
-      <button data-page="dashboard" class="on"><span class="ic">◎</span>学习驾驶舱</button>
-      <button data-page="agent"><span class="ic">✦</span>AI 督导<span class="badge hide" id="navAgentDot">AI</span></button>
-      <button data-page="plan"><span class="ic">☰</span>今日计划<span class="badge hide" id="navPlanBadge"></span></button>
-      <button data-page="checkin"><span class="ic">✓</span>打卡与记录</button>
-      <button data-page="mastery"><span class="ic">◔</span>掌握度评估</button>
-      <button data-page="route"><span class="ic">↗</span>学习路线</button>
-      <button data-page="trend"><span class="ic">◷</span>进度追踪</button>
-      <button data-page="hot"><span class="ic">✦</span>考研热点</button>
-      <button data-page="about"><span class="ic">ⓘ</span>关于与设置</button>
-    </nav>
-    <div style="margin-top:18px;padding:11px 12px;background:#f8fafd;border-radius:11px">
-      <div class="small muted">距考研初试</div>
-      <div id="sideDays" style="font-size:19px;font-weight:700;letter-spacing:-.02em">—</div>
-      <div class="small muted2" id="sideExam">—</div>
-    </div>
-  </aside>
+ <aside class="side">
+ <div class="logo">
+ <div class="mark">408</div>
+ <div><b>考研学习助手</b><span>计算机专业课 · 智能督导</span></div>
+ </div>
+ <nav class="nav" id="nav">
+ <button data-page="dashboard" class="on">学习驾驶舱</button>
+ <button data-page="agent">AI 督导<span class="badge hide" id="navAgentDot">AI</span></button>
+ <button data-page="plan">今日计划<span class="badge hide" id="navPlanBadge"></span></button>
+ <button data-page="checkin">打卡与记录</button>
+ <button data-page="mastery">掌握度评估</button>
+ <button data-page="route">学习路线</button>
+ <button data-page="trend">进度追踪</button>
+ <button data-page="hot">考研热点</button>
+ <button data-page="about">关于与设置</button>
+ </nav>
+ <div style="margin-top:18px;padding:11px 12px;background:#f8fafd;border-radius:11px">
+ <div class="small muted">距考研初试</div>
+ <div id="sideDays" style="font-size:19px;font-weight:700;letter-spacing:-.02em">—</div>
+ <div class="small muted2" id="sideExam">—</div>
+ </div>
+ </aside>
 
-  <main class="main">
-    <div class="topbar">
-      <div>
-        <h2 id="pgTitle">学习驾驶舱</h2>
-        <div class="sub" id="pgSub">今天该学什么、学得怎么样、下一步怎么走</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="tag brand hide" id="llmTag"></span>
-        <button class="btn sm" id="btnSeed">载入演示数据</button>
-        <button class="btn sm pri" id="btnCheckinQuick">快速打卡</button>
-      </div>
-    </div>
-    <div id="view"></div>
-  </main>
+ <main class="main">
+ <div class="topbar">
+ <div>
+ <h2 id="pgTitle">学习驾驶舱</h2>
+ <div class="sub" id="pgSub">今天该学什么、学得怎么样、下一步怎么走</div>
+ </div>
+ <div style="display:flex;gap:8px;align-items:center">
+ <span class="tag brand hide" id="llmTag"></span>
+ <button class="btn sm" id="btnSeed">载入演示数据</button>
+ <button class="btn sm pri" id="btnCheckinQuick">快速打卡</button>
+ </div>
+ </div>
+ <div id="view"></div>
+ </main>
 </div>
 
 <div id="toast"></div>

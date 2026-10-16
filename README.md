@@ -25,7 +25,7 @@
 
 ## 二、智能体（AI 督导）
 
-打开左侧导航的 **✦ AI 督导** 即可与它对话。它不是套壳聊天框，而是**一个会调用工具的 Agent**：理解你的意图 → 调用对应工具 → 用**你的真实数据**算出结果 → 落库并改变后续计划。
+打开左侧导航的 ** AI 督导** 即可与它对话。它不是套壳聊天框，而是**一个会调用工具的 Agent**：理解你的意图 → 调用对应工具 → 用**你的真实数据**算出结果 → 落库并改变后续计划。
 
 ### 1. 11 个已注册工具
 
@@ -50,20 +50,20 @@
 - 「**我学不动了，今天只有 40 分钟**」→ 调 `replan` + `rest_directive`：把今日计划压缩到 40 分钟以内，只留 1–2 件最值得做的事，并给「开始比学多少更重要」的最小启动建议。
 - 「**我学完了最小生成树，花了 40 分钟**」→ 调 `log_study`：写入记录、提升该点掌握度、重算后续路线。
 
-对话里每个回答下方都会标出**本轮调用了哪些工具**（⚙ 标签），便于答辩时当场验证「它到底调了什么」。
+对话里每个回答下方都会标出**本轮调用了哪些工具**（ 标签），便于答辩时当场验证「它到底调了什么」。
 
 ### 3. 架构：本地规则引擎为主，大模型为可选增强
 
 ```
 用户发言
-  ↓
-lib/agent.js        意图理解：rankPoints 打分匹配知识点（精确 > 包含 > 主名 > 别名 > LCS > 分词）
-  ↓
-lib/agent-brain.js  对话编排：多轮上下文（待答题目 pending）、判分、状态机（新指令自动结束当前题）
-  ↓
-lib/agent-tools.js  工具执行：11 个工具直接读写 SQLite（掌握度 / 计划 / 记录）
-  ↓
-lib/agent-reply.js  回复生成：数字全部来自引擎实算，绝不由模型编造
+ ↓
+lib/agent.js 意图理解：rankPoints 打分匹配知识点（精确 > 包含 > 主名 > 别名 > LCS > 分词）
+ ↓
+lib/agent-brain.js 对话编排：多轮上下文（待答题目 pending）、判分、状态机（新指令自动结束当前题）
+ ↓
+lib/agent-tools.js 工具执行：11 个工具直接读写 SQLite（掌握度 / 计划 / 记录）
+ ↓
+lib/agent-reply.js 回复生成：数字全部来自引擎实算，绝不由模型编造
 ```
 
 分工：**数据类问题（进度/薄弱/抽背/计划）走本地工具，毫秒级、数字可追溯；开放域问题（如「KMP 与朴素匹配的区别」）交给大模型**，并带上该生的真实学习数据作为上下文。
@@ -92,7 +92,7 @@ lib/agent-reply.js  回复生成：数字全部来自引擎实算，绝不由模
 
 ```bash
 cd outputs/kaoyan-408
-npm start                 # 启动服务，默认 http://127.0.0.1:4080
+npm start # 启动服务，默认 http://127.0.0.1:4080
 ```
 
 浏览器打开 `http://127.0.0.1:4080` 即可使用。第一次打开是空白账号，点右上角**「载入演示数据」**可一键生成一个「复习到中期的考生」画像（60 天学习历史、398 条记录、82% 打卡率）用于演示。
@@ -100,9 +100,9 @@ npm start                 # 启动服务，默认 http://127.0.0.1:4080
 其他命令：
 
 ```bash
-npm test                                  # 引擎单元测试（50 项断言，用临时库，不动你的数据）
-npm run seed                              # 服务运行中时生成演示数据
-node scripts/seed-demo.js 45              # 自定义模拟天数
+npm test # 引擎单元测试（50 项断言，用临时库，不动你的数据）
+npm run seed # 服务运行中时生成演示数据
+node scripts/seed-demo.js 45 # 自定义模拟天数
 ```
 
 环境变量：`PORT`（默认 4080）、`HOST`（默认 127.0.0.1）、`KY_DB`（数据库路径）、`KY_LLM_KEY` / `KY_LLM_MODEL` / `KY_LLM_BASE`（大模型接入）。
@@ -114,17 +114,17 @@ node scripts/seed-demo.js 45              # 自定义模拟天数
 推荐用项目内配置文件（已被 `.gitignore` 忽略，不会泄露密钥）：
 
 ```bash
-cp config/llm.example.json config/llm.json   # 然后填入你的 base_url / model / api_key
+cp config/llm.example.json config/llm.json # 然后填入你的 base_url / model / api_key
 ```
 
 `config/llm.json`：
 
 ```json
 {
-  "base_url": "https://<你的端点>/compatible-mode/v1",
-  "model": "deepseek-v4.1-flash",
-  "api_key": "sk-xxxx",
-  "timeout_ms": 120000
+ "base_url": "https://<你的端点>/compatible-mode/v1",
+ "model": "deepseek-v4.1-flash",
+ "api_key": "sk-xxxx",
+ "timeout_ms": 120000
 }
 ```
 
@@ -143,9 +143,9 @@ cp config/llm.example.json config/llm.json   # 然后填入你的 base_url / mod
 ### 1. 掌握度模型：BKT × 遗忘曲线
 
 - 每道题按贝叶斯更新：`P(掌握|答对) = P(答对|掌握)·P(掌握) / P(答对)`，参数 `slip=0.12`（会却答错）、`guess=0.25`（不会却蒙对）。
-  意义：**答对不一定是真会，答错也不一定是不会**，避免「一次做对就判定掌握」。
+ 意义：**答对不一定是真会，答错也不一定是不会**，避免「一次做对就判定掌握」。
 - 记忆稳定度（天）随复习拉长、随答错衰减；掌握度按半衰期 `retention = 2^(-t/stability)` 自然衰减。
-  意义：同一个知识点，「一个月前学过」和「昨天复习过」的评分不同。
+ 意义：同一个知识点，「一个月前学过」和「昨天复习过」的评分不同。
 - 复习日期由目标保持率（85%）反推，形成「到期 → 复习 → 稳定度变长 → 间隔变远」的正循环。
 
 ### 2. 评估：三级 + 风险 + 估分
@@ -160,7 +160,7 @@ cp config/llm.example.json config/llm.json   # 然后填入你的 base_url / mod
 
 ```
 ① 复习（到期 + 即将到期，按 权重×缺口 排序）
-   → 复习预算上限 = 每日时长 × reviewShare，避免复习吃光新内容
+ → 复习预算上限 = 每日时长 × reviewShare，避免复习吃光新内容
 ② 高频薄弱点专练（权重 ≥ 4 且掌握 < 60%）
 ③ 新知识点（前置依赖已满足 → 章节顺序 → 权重）
 ```
@@ -184,19 +184,19 @@ cp config/llm.example.json config/llm.json   # 然后填入你的 base_url / mod
 ## 六、技术架构
 
 ```
-server.js            零依赖 HTTP 服务（约 20 个 REST 接口）
-lib/db.js            node:sqlite 数据层（users/checkins/logs/mastery/plan/hot_cache/advice_cache/agent_chat/agent_state）
-lib/engine.js        核心引擎：BKT + 遗忘曲线 + 三级评估 + 动态路线 + 建议规则
-lib/hot.js           热点聚合（研招网 + 60s 热搜 API + 关键词过滤 + 缓存 + 离线兜底）
-lib/llm.js           大模型接入（任意 OpenAI 兼容端点，配置：env > config/llm.json；含真实健康探测与超时保护）
-lib/agent.js         智能体·意图理解层（工具定义 + 知识点打分匹配）
-lib/agent-brain.js   智能体·对话编排层（多轮上下文、抽背状态机、判分、工具派发）
-lib/agent-tools.js   智能体·工具执行层（11 个工具，直接读写 SQLite）
-lib/agent-reply.js   智能体·回复生成层（数字全部来自引擎实算）
-data/syllabus.js     408 知识体系：143 个知识点，含权重/难度/学时/前置依赖
-data/quizbank.js     题库：51 道 408 核心考点题（含参考答案与判分关键词）
-public/              前端单页（原生 HTML/CSS/JS，9 个页面）
-scripts/             测试与演示数据脚本
+server.js 零依赖 HTTP 服务（约 20 个 REST 接口）
+lib/db.js node:sqlite 数据层（users/checkins/logs/mastery/plan/hot_cache/advice_cache/agent_chat/agent_state）
+lib/engine.js 核心引擎：BKT + 遗忘曲线 + 三级评估 + 动态路线 + 建议规则
+lib/hot.js 热点聚合（研招网 + 60s 热搜 API + 关键词过滤 + 缓存 + 离线兜底）
+lib/llm.js 大模型接入（任意 OpenAI 兼容端点，配置：env > config/llm.json；含真实健康探测与超时保护）
+lib/agent.js 智能体·意图理解层（工具定义 + 知识点打分匹配）
+lib/agent-brain.js 智能体·对话编排层（多轮上下文、抽背状态机、判分、工具派发）
+lib/agent-tools.js 智能体·工具执行层（11 个工具，直接读写 SQLite）
+lib/agent-reply.js 智能体·回复生成层（数字全部来自引擎实算）
+data/syllabus.js 408 知识体系：143 个知识点，含权重/难度/学时/前置依赖
+data/quizbank.js 题库：51 道 408 核心考点题（含参考答案与判分关键词）
+public/ 前端单页（原生 HTML/CSS/JS，9 个页面）
+scripts/ 测试与演示数据脚本
 ```
 
 设计取舍：**算法跑在本地，AI 只做增强**。掌握度、路线、建议不依赖网络与模型可用性，离线也能答辩；断网、模型欠费都不会让系统「不能用」。
@@ -205,9 +205,9 @@ scripts/             测试与演示数据脚本
 
 ## 七、演示脚本（答辩 3 分钟版）
 
-**第一幕：智能体会调工具（1 分钟）**打开 **✦ AI 督导** 页，依次点快捷话术：
+**第一幕：智能体会调工具（1 分钟）**打开 ** AI 督导** 页，依次点快捷话术：
 
-1. 「**我的进度怎么样**」→ 它调用 `query_progress`，当场算出掌握度 / 预估分 / 四科差距 / 最易丢分的科目（注意回答下方的 ⚙ 工具标签）。
+1. 「**我的进度怎么样**」→ 它调用 `query_progress`，当场算出掌握度 / 预估分 / 四科差距 / 最易丢分的科目（注意回答下方的 工具标签）。
 2. 「**抽背我几个知识点**」→ 调 `quiz_me` 出题；**故意只答对一半**（例如答「O(nlogn)」）→ 调 `grade_answer` 判分：显示命中 / 漏掉的得分点、掌握度变化、下次复习日期被提前。
 3. 追问「**最该补哪里**」→ 调 `query_weak`，刚答错的那个点已经进了薄弱清单第一条。
 
