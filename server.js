@@ -452,6 +452,47 @@ route('POST', '/api/agent/chat', async (req) => {
   return { ok: true, reply: r.reply, trace: r.trace, tools: r.tools, pending: r.pending };
 });
 
+// ---------- 智能体流式对话（SSE）：大模型逐段推送，前端实时渲染 ----------
+route('POST', '/api/agent/stream', async (req, _url, res) => {
+  const b = await readBody(req);
+  const u = uid();
+  const message = String(b.message || '').slice(0, 2000);
+  const ctx = als.getStore();
+  const cookieHdr = ctx && ctx.newCookie && ctx.sid ? { 'Set-Cookie': session.cookieHeader(ctx.sid) } : null;
+  if (!message.trim()) throw new Error('消息不能为空');
+
+  // 建立 SSE 通道
+  const headers = {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  };
+  if (cookieHdr) Object.assign(headers, cookieHdr);
+  res.writeHead(200, headers);
+  if (res.flushHeaders) res.flushHeaders();
+
+  // 与 send() 一致：SSE 出口同样做 emoji 净化，避免流式绕过过滤
+  const cleanStr = (v) => (typeof v === 'string' ? stripEmoji(v) : v);
+  const sendEv = (type, data) => {
+    const safe = { type };
+    for (const k of Object.keys(data || {})) safe[k] = cleanStr(data[k]);
+    try { res.write('data: ' + JSON.stringify(safe) + '\n\n'); } catch (_) {}
+  };
+  const heartbeat = setInterval(() => { try { res.write(': ping\n\n'); } catch (_) {} }, 15000);
+
+  try {
+    // 流式增量也逐段净化，保证前端实时渲染的内容同样无 emoji
+    const r = await agentBrain.runTurn(u, message, (delta) => sendEv('delta', { text: delta }));
+    sendEv('done', { reply: r.reply, trace: r.trace, tools: r.tools, pending: r.pending, interactive: r.interactive });
+  } catch (e) {
+    sendEv('error', { error: e.message });
+  } finally {
+    clearInterval(heartbeat);
+    try { res.end(); } catch (_) {}
+  }
+});
+
 route('POST', '/api/agent/clear', async () => {
   const u = uid();
   agentReply.clearHistory(u);
@@ -504,10 +545,13 @@ const server = http.createServer(async (req, res) => {
       return serveStatic(res, url.pathname);
     }
     try {
-      const out = await handler(req, url);
+      // 流式接口自行接管响应（res.writableEnded 表示已处理）
+      const out = await handler(req, url, res);
+      if (res.writableEnded) return;
       send(res, 200, out, undefined, setCookieIfNew());
     } catch (e) {
       console.error('[API ERROR]', key, e.message);
+      if (res.writableEnded) return;
       send(res, 400, { error: e.message }, undefined, setCookieIfNew());
     }
   });

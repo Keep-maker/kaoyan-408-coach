@@ -22,6 +22,48 @@ const api = async (p, opts) => {
 };
 const post = (p, b) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) });
 
+// 流式对话：SSE 逐段回调；返回最终 done 数据
+const streamChat = async (message, handlers = {}) => {
+  // 老浏览器 / 不支持流式读取时，回退到一次性接口（功能不受影响）
+  if (typeof TextDecoder === 'undefined' || !window.ReadableStream) {
+    const r = await post('/api/agent/chat', { message });
+    if (handlers.onDelta && r.reply) handlers.onDelta(r.reply);
+    return r;
+  }
+  const res = await fetch(abs('/api/agent/stream'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message })
+  });
+  if (!res.ok || !res.body) {
+    // SSE 不可用 → 回退
+    const r = await post('/api/agent/chat', { message });
+    if (handlers.onDelta && r.reply) handlers.onDelta(r.reply);
+    return r;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let done = null;
+  for (;;) {
+    const { done: fin, value } = await reader.read();
+    if (fin) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const blk of parts) {
+      const line = blk.split('\n').find((l) => l.startsWith('data:'));
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch (_) { continue; }
+      if (ev.type === 'delta') { if (handlers.onDelta) handlers.onDelta(ev.text); }
+      else if (ev.type === 'done') done = ev;
+      else if (ev.type === 'error') throw new Error(ev.error || 'stream error');
+    }
+  }
+  if (!done) throw new Error('流式响应未完成');
+  return done;
+};
+
 let toastTimer;
 function toast(msg, ok = true) {
  const t = $('#toast');
@@ -235,25 +277,55 @@ function bindAgent() {
  const box = $('#chatBox');
  if (box) box.scrollTop = box.scrollHeight;
  const input = $('#agInput');
- const send = async () => {
- const text = (input.value || '').trim();
- if (!text || S.agentBusy) return;
- S.agentDraft = '';
- S.agentBusy = true;
- S.agentMsgs = S.agentMsgs || [];
- S.agentMsgs.push({ role: 'user', content: text, trace: [] });
- render();
- try {
- const r = await post('/api/agent/chat', { message: text });
- S.agentMsgs.push({ role: 'agent', content: r.reply, trace: r.trace || [] });
- S.agentPending = r.pending;
- } catch (e) {
- S.agentMsgs.push({ role: 'agent', content: ' 出错了：' + e.message, trace: [] });
- }
- S.agentBusy = false;
- await refreshCore();
- render();
- };
+  const send = async () => {
+    const text = (input.value || '').trim();
+    if (!text || S.agentBusy) return;
+    S.agentDraft = '';
+    S.agentBusy = true;
+    S.agentMsgs = S.agentMsgs || [];
+    S.agentMsgs.push({ role: 'user', content: text, trace: [] });
+    render();
+
+    // 流式接收中的临时气泡：直接改 DOM，避免整页重渲染导致闪烁
+    let live = null;
+    S.agentStreamText = '';
+    const ensureLive = () => {
+      if (live) return live;
+      const box = $('#chatBox');
+      if (!box) return null;
+      // 首个增量到达：移除"思考中…"占位，避免两个气泡并存
+      const typing = box.querySelector('.msg.typing');
+      if (typing) typing.remove();
+      const el = document.createElement('div');
+      el.className = 'msg agent streaming';
+      el.innerHTML = '<div class="av">AI</div><div class="bd"><div class="md"></div></div>';
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+      live = el;
+      return el;
+    };
+    const onDelta = (chunk) => {
+      const el = ensureLive();
+      if (!el) return;
+      S.agentStreamText += chunk;
+      const md = el.querySelector('.md');
+      if (md) md.innerHTML = mdToHtml(S.agentStreamText) + '<span class="caret"></span>';
+      const box = $('#chatBox');
+      if (box) box.scrollTop = box.scrollHeight;
+    };
+
+    try {
+      const r = await streamChat(text, { onDelta });
+      S.agentMsgs.push({ role: 'agent', content: r.reply, trace: r.trace || [] });
+      S.agentPending = r.pending;
+    } catch (e) {
+      S.agentMsgs.push({ role: 'agent', content: '出错了：' + e.message, trace: [] });
+    }
+    S.agentStreamText = '';
+    S.agentBusy = false;
+    await refreshCore();
+    render();
+  };
  if (input) {
  input.addEventListener('input', () => { S.agentDraft = input.value; });
  input.addEventListener('keydown', (e) => {

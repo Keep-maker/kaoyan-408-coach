@@ -266,3 +266,9 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .md .md-table th,.md .md-table td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
 .md .md-table th{background:#f4f7fc;font-weight:650;white-space:nowrap}
 .md .md-table tr:nth-child(even) td{background:#fafbfe}
+
+/* 流式输出时的打字光标 */
+.md .caret{display:inline-block;width:2px;height:14px;background:var(--brand);
+  vertical-align:-2px;margin-left:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+.msg.streaming .bd{border-color:var(--brand-soft)}
