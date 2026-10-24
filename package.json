@@ -9,7 +9,9 @@
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node scripts/seed-demo.js",
-    "test": "node scripts/test-engine.js"
+    "sync:quiz": "node scripts/import-question-bank.js",
+    "test": "node scripts/test-engine.js && node scripts/test-quiz.js",
+    "test:quiz": "node scripts/test-quiz.js"
   },
   "engines": { "node": ">=22" }
 }

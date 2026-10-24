@@ -14,6 +14,9 @@ COPY . .
 # 数据目录（数据库挂载点）
 RUN mkdir -p /var/lib/kaoyan
 
+# 首次启动空库时自动同步 408 题库；挂载卷已有题库则跳过
+ENV KY_AUTO_SYNC=1
+
 EXPOSE 4080
 
 # 简单健康检查：能取到 /api/overview 即视为健康

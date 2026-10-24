@@ -21,6 +21,8 @@ const api = async (p, opts) => {
  return j;
 };
 const post = (p, b) => api(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) });
+// 供题库模块复用同一套请求、转义与提示组件
+Object.assign(window, { $, $$, esc, api, post, abs, toast, SUB_COLOR, SUB_TAG });
 
 // 流式对话：SSE 逐段回调；返回最终 done 数据
 const streamChat = async (message, handlers = {}) => {
@@ -129,6 +131,7 @@ async function refreshCore() {
 function render() {
  const titles = {
  dashboard: ['学习驾驶舱', '今天该学什么、学得怎么样、下一步怎么走'],
+ quiz: ['题库刷题', '按科目与章节组卷，刷题、错题、收藏与掌握度闭环'],
  agent: ['AI 督导', '能对话、会调工具、真改数据的 408 智能体'],
  plan: ['今日计划', '按剩余时间、遗忘曲线与掌握情况动态生成'],
  checkin: ['打卡与记录', '连续打卡、学习时长与知识点记录'],
@@ -138,13 +141,28 @@ function render() {
  hot: ['考研热点', '官方资讯 + 全网热搜中的考研/计算机相关'],
  about: ['关于与设置', '个人信息、目标分与大模型增强']
  };
+ if (!titles[S.page]) S.page = 'dashboard';
  $('#pgTitle').textContent = titles[S.page][0];
  $('#pgSub').textContent = titles[S.page][1];
  const v = $('#view');
  v.innerHTML = '<div class="card"><div class="skel" style="width:40%"></div><div class="skel mt" style="width:80%"></div><div class="skel mt" style="width:65%"></div></div>';
+ if (S.page === 'quiz' && window.QUIZ) {
+   Promise.resolve(window.QUIZ.openQuiz('start')).catch((e) => {
+     v.innerHTML = `<div class="card"><div class="empty">加载失败：${esc(e.message)}</div></div>`;
+   });
+   return;
+ }
  const fn = { dashboard: renderDashboard, agent: renderAgent, plan: renderPlan, checkin: renderCheckin, mastery: renderMastery,
  route: renderRoute, trend: renderTrend, hot: renderHot, about: renderAbout }[S.page];
  Promise.resolve(fn()).catch((e) => { v.innerHTML = `<div class="card"><div class="empty">加载失败：${esc(e.message)}</div></div>`; });
+}
+
+function openPointPractice(pointId, count = 10) {
+ $$('#nav button').forEach((x) => x.classList.toggle('on', x.dataset.page === 'quiz'));
+ S.page = 'quiz';
+ $('#pgTitle').textContent = '题库刷题';
+ $('#pgSub').textContent = '按知识点组卷，答完自动回写掌握度';
+ window.QUIZ.startWithFilters({ pointId, count, mode: 'random' });
 }
 
 /* ============================================================
@@ -447,6 +465,7 @@ async function renderDashboard() {
  </div>
  </div>
  <div class="mt" style="display:flex;gap:8px;flex-wrap:wrap">
+ <button class="btn sm pri" data-goto="quiz">题库刷题</button>
  <button class="btn sm" data-goto="mastery">查看知识图谱</button>
  <button class="btn sm" data-goto="route">未来路线</button>
  <button class="btn sm" data-goto="hot">今日热点</button>
@@ -525,6 +544,7 @@ async function renderPlan() {
  });
  $$('.chk').forEach(bindChk);
  $$('[data-log]').forEach((b) => b.addEventListener('click', () => openLogModal(b.dataset.log, b.dataset.kind)));
+ $$('[data-quiz-point]').forEach((b) => b.addEventListener('click', () => openPointPractice(b.dataset.quizPoint, 10)));
 }
 
 function planRowFull(i) {
@@ -538,6 +558,7 @@ function planRowFull(i) {
  <div class="s" style="color:var(--ink2)">${esc(i.reason || '')}</div>
  </div>
  <div class="right" style="display:flex;gap:6px">
+ <button class="btn sm" data-quiz-point="${i.point_id}">刷题</button>
  <button class="btn sm" data-log="${i.point_id}" data-kind="${i.kind}">记一笔</button>
  </div>
  </div>`;
@@ -701,7 +722,7 @@ async function renderMastery() {
  $$('.chapters').forEach((c) => c.classList.toggle('hide'));
  });
  $$('[data-point]').forEach((el) => el.addEventListener('click', () => openPointModal(el.dataset.point, byId[el.dataset.point])));
- $$('[data-quicklog]').forEach((b) => b.addEventListener('click', () => openLogModal(b.dataset.quicklog, 'quiz')));
+ $$('[data-quicklog]').forEach((b) => b.addEventListener('click', () => openPointPractice(b.dataset.quicklog, 10)));
 }
 
 /* ---------------- 5. 学习路线 ---------------- */
@@ -1007,9 +1028,11 @@ function openPointModal(id, st) {
  ${p.tags && p.tags.length ? p.tags.map((t) => `<span class="tag ${t === '必考' ? 'bad' : t === '难点' ? 'warn' : 'brand'}">${esc(t)}</span> `).join('') : ''}
  <div class="actions">
  <button class="btn" id="pClose">关闭</button>
+ <button class="btn" id="pQuiz">刷这个知识点</button>
  <button class="btn pri" id="pLog">记录一次学习 / 测试</button>
  </div>`);
  $('#pClose').addEventListener('click', closeModal);
+ $('#pQuiz').addEventListener('click', () => { closeModal(); openPointPractice(id, 10); });
  $('#pLog').addEventListener('click', () => { closeModal(); openLogModal(id, 'quiz'); });
 }
 

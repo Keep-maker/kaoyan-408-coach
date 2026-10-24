@@ -13,6 +13,7 @@ const agentBrain = require('./lib/agent-brain');
 const agentReply = require('./lib/agent-reply');
 const agentCore = require('./lib/agent');
 const session = require('./lib/session');
+const quiz = require('./lib/quiz-service');
 const { stripEmoji } = require('./lib/text');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const als = new AsyncLocalStorage();
@@ -20,6 +21,44 @@ const als = new AsyncLocalStorage();
 const PORT = Number(process.env.PORT || 4080);
 const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+let syncTask = null;
+let syncProgress = null;
+function questionSource() {
+  return require('./lib/question-source');
+}
+function startQuestionSync(options = {}) {
+  if (syncTask) return { started: false, message: '题库正在同步中' };
+  const source = questionSource();
+  syncTask = source.syncQuestionBank(options, (progress) => {
+    const next = { ...progress, at: new Date().toISOString() };
+    if (progress.type === 'list-page') {
+      next.done = progress.listed || 0;
+      next.total = progress.target || 0;
+      next.phase = '正在读取题目列表';
+    } else if (progress.type === 'detail-progress') {
+      next.done = progress.processed || 0;
+      next.total = progress.target || 0;
+      next.phase = '正在下载题目与解析';
+    } else if (progress.type === 'complete') {
+      next.done = progress.stats?.totals?.processed || quiz.bankSize();
+      next.total = progress.stats?.totals?.target || next.done;
+      next.phase = '同步完成';
+    }
+    syncProgress = next;
+  })
+    .then((result) => {
+      console.log('[题库同步] 完成: ' + JSON.stringify(result));
+      return result;
+    })
+    .catch((e) => {
+      console.error('[题库同步] 失败:', e.message);
+      syncProgress = { ...(syncProgress || {}), error: e.message, finishedAt: new Date().toISOString() };
+      return { ok: false, error: e.message };
+    })
+    .finally(() => { syncTask = null; });
+  return { started: true, message: '题库同步已开始' };
+}
 
 // ---------- 工具 ----------
 const send = (res, code, body, type = 'application/json; charset=utf-8', extra = null) => {
@@ -319,7 +358,8 @@ route('POST', '/api/demo/seed', async (req) => {
 
   // 清空旧数据
   q.tx(() => {
-    ['checkins', 'logs', 'mastery', 'plan', 'advice_cache'].forEach((t) => q.run(`DELETE FROM ${t} WHERE user_id=?`, u));
+    ['quiz_attempts', 'quiz_sessions', 'quiz_bookmarks', 'checkins', 'logs', 'mastery', 'plan', 'advice_cache']
+      .forEach((t) => q.run(`DELETE FROM ${t} WHERE user_id=?`, u));
   });
 
   // 三档掌握水平的知识点（模拟一个复习到中期的考生）
@@ -421,10 +461,83 @@ route('POST', '/api/demo/seed', async (req) => {
 route('POST', '/api/reset', async () => {
   const u = uid();
   q.tx(() => {
-    ['checkins', 'logs', 'mastery', 'plan', 'advice_cache'].forEach((t) => q.run(`DELETE FROM ${t} WHERE user_id=?`, u));
+    ['quiz_attempts', 'quiz_sessions', 'quiz_bookmarks', 'checkins', 'logs', 'mastery', 'plan', 'advice_cache']
+      .forEach((t) => q.run(`DELETE FROM ${t} WHERE user_id=?`, u));
     q.run('UPDATE users SET start_date=? WHERE id=?', E.todayStr(), u);
   });
   return { ok: true };
+});
+
+// ---------- 题库刷题 ----------
+route('GET', '/api/quiz/overview', () => {
+  const source = questionSource();
+  return {
+    ...quiz.overview(uid()),
+    sync: source.getSyncState(),
+    syncing: Boolean(syncTask),
+    progress: syncProgress
+  };
+});
+
+route('POST', '/api/quiz/sync', async (req) => {
+  const b = await readBody(req);
+  return startQuestionSync({
+    force: Boolean(b.force),
+    subjects: b.subjects,
+    limitPerSubject: b.limitPerSubject,
+    concurrency: b.concurrency
+  });
+});
+
+route('GET', '/api/quiz/sync', () => ({
+  syncing: Boolean(syncTask),
+  progress: syncProgress,
+  state: questionSource().getSyncState()
+}));
+
+route('POST', '/api/quiz/session', async (req) => {
+  const b = await readBody(req);
+  return quiz.createSession(uid(), b);
+});
+
+route('GET', '/api/quiz/session', (req, url) => quiz.getSessionQuestion(
+  uid(),
+  url.searchParams.get('sessionId'),
+  Number(url.searchParams.get('index') || 0)
+));
+
+route('POST', '/api/quiz/answer', async (req) => {
+  const b = await readBody(req);
+  return quiz.submitAnswer(uid(), b);
+});
+
+route('POST', '/api/quiz/self-grade', async (req) => {
+  const b = await readBody(req);
+  return quiz.selfGrade(uid(), b);
+});
+
+route('POST', '/api/quiz/bookmark', async (req) => {
+  const b = await readBody(req);
+  return quiz.toggleBookmark(uid(), b.sourceId, b.bookmarked);
+});
+
+route('GET', '/api/quiz/collection', (req, url) => quiz.collection(
+  uid(),
+  url.searchParams.get('kind') === 'favorite' ? 'favorite' : 'wrong',
+  Number(url.searchParams.get('limit') || 80)
+));
+
+route('POST', '/api/quiz/finish', async (req) => {
+  const b = await readBody(req);
+  return quiz.finishSession(uid(), b.sessionId);
+});
+
+route('GET', '/api/quiz/report', (req, url) => {
+  const userId = uid();
+  const sessionId = url.searchParams.get('sessionId');
+  const session = q.get('SELECT * FROM quiz_sessions WHERE id=? AND user_id=?', String(sessionId || ''), userId);
+  if (!session) throw new Error('练习记录不存在');
+  return quiz.buildReport(userId, session);
 });
 
 // ---------- 智能体（Agent）：对话式督导，可读写真实数据 ----------
@@ -568,6 +681,15 @@ if (require.main === module) {
     console.log('  数据库: ' + DB_FILE);
     console.log('  大模型: ' + (llm.available() ? '已配置 (' + llm.info().model + ')，探测中…' : '未配置（使用本地规则引擎）'));
     console.log('===============================================');
+    if (quiz.bankSize() === 0 && process.env.KY_AUTO_SYNC !== '0') {
+      setTimeout(() => {
+        try { startQuestionSync({ force: false }); }
+        catch (e) { console.error('[题库同步] 启动失败:', e.message); }
+      }, 500);
+    }
   });
 }
+server.on('error', (error) => {
+  console.error('服务启动失败:', error.message);
+});
 module.exports = { server, currentUser, calcStreak };
