@@ -2,7 +2,7 @@
 // 增量补题：按“科目”口径抓全部列表，只拉取本地尚未同步的新题详情并入库。
 // 源站根分类口径会漏掉部分未分类/多分类题目，用本脚本可补齐差异。
 const path = require('node:path');
-const { q } = require('../lib/db');
+const { db, q } = require('../lib/db');
 const source = require('../lib/question-source');
 
 const SUBJECTS = source.SUBJECTS.map((subject) => ({
@@ -17,7 +17,20 @@ async function fetchAllListed(rootId) {
   const seen = new Map();
   let page = 1;
   for (;;) {
-    const payload = await source.fetchQuestionsPage(rootId, page, 50, { scope: 'subject' });
+    let payload;
+    try {
+      payload = await source.fetchQuestionsPage(rootId, page, 50, { scope: 'subject' });
+    } catch (error) {
+      console.warn(`  列表第 ${page} 页失败，重试: ${error.message}`);
+      await sleep(1200);
+      try {
+        payload = await source.fetchQuestionsPage(rootId, page, 50, { scope: 'subject' });
+      } catch (error2) {
+        console.warn(`  列表第 ${page} 页再次失败，跳过: ${error2.message}`);
+        page += 1;
+        continue;
+      }
+    }
     const questions = payload.questions || [];
     for (const item of questions) {
       const id = Number(item && item.id);
@@ -55,7 +68,7 @@ async function main() {
     const placeholders = columns.map(() => '?').join(',');
     const updates = columns.filter((column) => column !== 'source_id')
       .map((column) => `${column}=excluded.${column}`).join(',');
-    const statement = q.db.prepare(
+    const statement = db.prepare(
       `INSERT INTO qb_questions (${columns.join(',')}) VALUES (${placeholders})
        ON CONFLICT(source_id) DO UPDATE SET ${updates}`
     );

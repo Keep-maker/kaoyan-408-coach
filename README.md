@@ -106,6 +106,8 @@ npm run seed # 服务运行中时生成演示数据
 node scripts/seed-demo.js 45 # 自定义模拟天数
 npm run sync:quiz # 全量同步 408 公开题库（约 2-3 分钟）
 npm run sync:quiz -- --limit-per-subject=50 # 只同步每科前 50 题，便于快速验证
+npm run sync:quiz:extra # 按「科目」口径补拉根分类口径漏掉的题
+npm run fix:chapters # 回填缺失章节（按小节名反推）
 ```
 
 题库同步是增量的：重复执行会更新变化题目，不会清空学习记录。运行中也可以在「题库刷题 → 同步题库」发起后台更新，页面会显示实时进度。`KY_AUTO_SYNC=0` 可关闭首次空库时的自动同步。

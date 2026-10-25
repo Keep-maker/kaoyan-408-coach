@@ -10,6 +10,8 @@
     "dev": "node server.js",
     "seed": "node scripts/seed-demo.js",
     "sync:quiz": "node scripts/import-question-bank.js",
+    "sync:quiz:extra": "node scripts/sync-quiz-extra.js",
+    "fix:chapters": "node scripts/fix-null-chapters.js",
     "test": "node scripts/test-engine.js && node scripts/test-quiz.js",
     "test:quiz": "node scripts/test-quiz.js"
   },
