@@ -382,4 +382,5 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   .qbar-mid .q-timer{font-size:11.5px;padding:1px 5px}
   .qtitle{font-size:15px}
   .qtitle .md-p{font-size:15px}
+  .plan-grid{grid-template-columns:1fr!important}
 }

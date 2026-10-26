@@ -522,26 +522,64 @@ async function genPlan() {
 async function renderPlan() {
  S.plan = await api('/api/plan?date=' + todayStr());
  const p = S.plan;
+ const doneCount = p.items.filter((i) => i.status === 'done').length;
+ const drill = p.items.filter((i) => i.kind === 'drill').length;
  $('#view').innerHTML = `
  <div class="grid g3">
  <div class="stat"><div class="k">今日任务</div><div class="v">${p.items.length}<small>项</small></div>
- <div class="d">新学 ${p.items.filter((i) => i.kind === 'new').length} · 复习 ${p.items.filter((i) => i.kind === 'review').length} · 专练 ${p.items.filter((i) => i.kind === 'drill').length}</div></div>
+ <div class="d">新学 ${p.items.filter((i) => i.kind === 'new').length} · 复习 ${p.items.filter((i) => i.kind === 'review').length} · 专练 ${drill}</div></div>
  <div class="stat"><div class="k">计划时长</div><div class="v">${p.totalMinutes}<small>分钟</small></div>
  <div class="d">你的上限 ${S.overview.user.daily_minutes} 分钟</div></div>
  <div class="stat"><div class="k">完成度</div><div class="v">${p.progress}<small>%</small></div>
- <div class="d">已完成 ${p.doneMinutes} 分钟</div></div>
+ <div class="d">已完成 ${p.doneMinutes} 分钟 / ${doneCount} 项</div></div>
  </div>
- <div class="card mt2">
+ <div class="grid g2 mt2 plan-grid" style="align-items:start">
+ <div class="card">
  <h3><span class="dot"></span>${fmtDate(p.date)} ${wd(p.date)} 任务清单
  <span class="tag ${p.strategy.level === 'sprint' ? 'warn' : 'brand'}" style="margin-left:auto">${p.strategy.name}</span>
  <button class="btn sm" id="regen" style="margin-left:8px">重新生成</button></h3>
  <div class="small muted" style="margin-bottom:10px">${esc(p.strategy.note)}</div>
  ${p.items.length ? `<div class="rows">${p.items.map(planRowFull).join('')}</div>` : '<div class="empty">暂无任务，点击「重新生成」</div>'}
+ </div>
+ <div class="plan-side">
+  <div class="card">
+   <h3><span class="dot"></span>今日进度</h3>
+   <div class="row" style="border:0;padding:5px 0"><div class="grow"><div class="t">任务完成</div></div><div class="right"><b>${doneCount}</b> / ${p.items.length}</div></div>
+   ${bar(p.progress)}
+   <div class="row" style="border:0;padding:5px 0"><div class="grow"><div class="t">已投入时长</div></div><div class="right"><b>${p.doneMinutes}</b> / ${p.totalMinutes} 分钟</div></div>
+   ${bar(p.totalMinutes ? Math.round(p.doneMinutes / p.totalMinutes * 100) : 0)}
+   <div class="mt small muted">勾选任务后进度自动更新，并同步调整掌握度与明日计划。</div>
+  </div>
+  <div class="card mt">
+   <h3><span class="dot"></span>执行提示</h3>
+   <div class="advice ${p.strategy.level === 'sprint' ? 'warn' : 'ok'}">
+    <div class="h">${p.strategy.name} · 今日剩余 ${Math.max(0, p.totalMinutes - p.doneMinutes)} 分钟</div>
+    <div class="b">${esc(p.strategy.note)}</div>
+   </div>
+   <div class="mt small muted">需要更短时间：在 AI 督导里说「我学不动了，今天只有 40 分钟」，系统会自动压缩今日任务。</div>
+  </div>
+  <div class="card mt">
+   <h3><span class="dot"></span>今天最容易丢分的点</h3>
+   <div class="rows" id="planWeak"></div>
+  </div>
+ </div>
  </div>`;
  $('#regen').addEventListener('click', async () => {
  try { await post('/api/plan/regenerate', { date: todayStr() }); toast('已按最新掌握情况重排'); await refreshCore(); render(); }
  catch (e) { toast(e.message, false); }
  });
+ const weakBox = $('#planWeak');
+ if (weakBox) {
+  try {
+   const a = await api('/api/assessment');
+   weakBox.innerHTML = (a.weak && a.weak.length
+    ? a.weak.slice(0, 5).map((w) => `<div class="row">
+     <span class="dotc d-${w.p < 0.4 ? 'due' : 'learning'}"></span>
+     <div class="grow"><div class="t">${esc(w.point.name)}</div><div class="s">${esc(w.point.subjectName)} · 权重 ${w.point.weight}</div></div>
+     <div class="right"><b>${Math.round(w.p * 100)}%</b></div></div>`).join('')
+    : '<div class="empty">暂无薄弱点</div>');
+  } catch (_) { weakBox.innerHTML = '<div class="empty">暂无数据</div>'; }
+ }
  $$('.chk').forEach(bindChk);
  $$('[data-log]').forEach((b) => b.addEventListener('click', () => openLogModal(b.dataset.log, b.dataset.kind)));
  $$('[data-quiz-point]').forEach((b) => b.addEventListener('click', () => openPointPractice(b.dataset.quizPoint, 10)));
