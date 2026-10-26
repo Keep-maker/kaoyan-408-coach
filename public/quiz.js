@@ -31,8 +31,13 @@
     revealed: false,
     elapsed: 0,
     timer: null,
-    syncPolling: false
+    syncPolling: false,
+    skipped: new Set()
   };
+
+  function modeLabel(mode) {
+    return { random: '随机组卷', sequence: '顺序练习', wrong: '错题重练', favorite: '收藏练习' }[mode] || '练习';
+  }
 
   // ---------- Markdown + KaTeX 渲染 ----------
   function renderMath(node) {
@@ -142,6 +147,26 @@
       const subject = o.subjects.find((s) => s.id === c.subjectKey);
       return `<option value="${c.id}" data-sub="${c.subjectKey}">${esc(subject?.short || '')} · ${esc(c.name)}（${c.total}）</option>`;
     }).join('');
+    const recentRows = (o.sessions || []).slice(0, 5).map((s) => {
+      const acc = s.answered ? Math.round((s.correct / Math.max(1, s.answered)) * 100) : null;
+      const when = (s.startedAt || '').slice(0, 16).replace('T', ' ');
+      const tag = s.status === 'completed'
+        ? '<span class="tag ok">已完成</span>'
+        : s.answered > 0
+          ? '<span class="tag warn">进行中</span>'
+          : '<span class="tag">未开始</span>';
+      return `<div class="row">
+        <span class="dotc" style="background:${SUB_COLOR[s.mode === 'wrong' ? 'os' : s.mode === 'favorite' ? 'cn' : 'ds']}"></span>
+        <div class="grow">
+          <div class="t">${tag} ${esc(modeLabel(s.mode))} · ${s.answered}/${s.total}</div>
+          <div class="s">${esc(when)}${acc !== null ? ' · 正确率 ' + acc + '%' : ''}</div>
+        </div>
+        <button class="btn sm" data-history="${esc(s.id)}">${s.status === 'completed' ? '查看报告' : '继续练习'}</button>
+      </div>`;
+    }).join('');
+    const weakChips = (o.weak || []).slice(0, 6).map((w) => `
+      <button class="btn sm weak-chip" data-point="${esc(w.pointId)}"
+        title="${esc(w.pointId)} · ${esc(w.subjectName)}${w.chapterName ? ' · ' + esc(w.chapterName) : ''}">${esc(w.name)} (${w.p}%)</button>`).join('');
 
     v.innerHTML = `
     <div class="grid g2" style="align-items:start">
@@ -182,6 +207,8 @@
             <button data-v="sequence">顺序</button>
           </div>
         </div>
+        ${weakChips ? `<div class="field"><label>薄弱点快练（按当前掌握度）</label>
+          <div class="weak-chips">${weakChips}</div></div>` : ''}
         <div style="display:flex;gap:9px;flex-wrap:wrap">
           <button class="btn pri" id="startPractice">开始练习</button>
           <button class="btn" data-mode="wrong" id="startWrong">只练错题本</button>
@@ -191,6 +218,11 @@
     </div>
 
     ${ready ? '' : `<div class="card mt2 q-sync">尚未同步题库：请先点击「同步题库」拉取最新题目（约 7000 题，首次需要几分钟）。<button class="btn pri sm" id="syncNow2">同步题库</button></div>`}
+
+    ${recentRows ? `<div class="card mt2">
+      <h3><span class="dot"></span>最近练习</h3>
+      <div class="rows">${recentRows}</div>
+    </div>` : ''}
 
     <div class="grid g3 mt2">
       <div class="card qact"><h3><span class="dot"></span>错题本</h3><div class="small muted">做错的题会自动归档，支持反复重练。</div><button class="btn sm mt" data-mode="wrong" id="goWrong">进入错题本</button></div>
@@ -227,6 +259,23 @@
     }));
     $('#startWrong').addEventListener('click', () => startSession({ mode: 'wrong' }));
     $('#startFav').addEventListener('click', () => startSession({ mode: 'favorite' }));
+    $$('.weak-chip').forEach((b) => b.addEventListener('click', () => {
+      startSession({ pointId: b.dataset.point, count: 8, mode: 'random' });
+    }));
+    $$('[data-history]').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.history;
+      const item = (state.overview.sessions || []).find((s) => String(s.id) === id);
+      if (item && item.status === 'completed') {
+        try {
+          const r = await api('/api/quiz/report?sessionId=' + encodeURIComponent(id));
+          stopTimer();
+          state.view = 'report';
+          renderReport(r);
+        } catch (e) { toast('无法打开报告：' + e.message, false); }
+      } else {
+        await resumeSession(id);
+      }
+    }));
     $('#goWrong').addEventListener('click', () => renderCollection('wrong'));
     $('#goFav').addEventListener('click', () => renderCollection('favorite'));
     $('#syncNow').addEventListener('click', () => syncBank());
@@ -275,6 +324,7 @@
       state.statuses = r.statuses;
       state.view = 'practice';
       state.elapsed = 0;
+      state.skipped = new Set();
       renderPractice();
     } catch (e) { toast('无法开始：' + e.message, false); }
   }
@@ -348,9 +398,9 @@
       <div class="card">
         <h3><span class="dot"></span>答题卡</h3>
         <div class="qcard">${state.statuses.map((st, i) => `
-          <button class="qcell ${st.answered ? (st.correct === 1 ? 'ok' : st.correct === 0 ? 'bad' : 'self') : ''} ${i === state.index ? 'now' : ''}" data-idx="${i}">${i + 1}</button>
+          <button class="qcell ${st.answered ? (st.correct === 1 ? 'ok' : st.correct === 0 ? 'bad' : 'self') : state.skipped.has(i) ? 'skip' : ''} ${i === state.index ? 'now' : ''}" data-idx="${i}">${i + 1}</button>
         `).join('')}</div>
-        <div class="qlegend small muted"><span class="qcell ok mini"></span>对 <span class="qcell bad mini"></span>错 <span class="qcell self mini"></span>待自评 <span class="qcell mini"></span>未答</div>
+        <div class="qlegend small muted"><span class="qcell ok mini"></span>对 <span class="qcell bad mini"></span>错 <span class="qcell self mini"></span>待自评 <span class="qcell skip mini"></span>跳过 <span class="qcell mini"></span>未答</div>
       </div>
     </div>
 
@@ -405,6 +455,7 @@
     });
     const skip = $('#skipBtn');
     if (skip) skip.addEventListener('click', async () => {
+      state.skipped.add(state.index);
       if (state.index + 1 >= state.session.total) { await finish(); }
       else await gotoIndex(state.index + 1);
     });
@@ -482,6 +533,29 @@
     } catch (e) { toast('失败：' + e.message, false); }
   }
 
+  // 继续未完成的练习：恢复会话并跳到当前进度
+  async function resumeSession(sessionId) {
+    try {
+      const r = await api(`/api/quiz/session?sessionId=${encodeURIComponent(sessionId)}&index=0`);
+      const firstUnanswered = (r.statuses || []).findIndex((st) => !st.answered);
+      const target = firstUnanswered >= 0 ? firstUnanswered : Math.max(0, (r.statuses || []).length - 1);
+      const cur = target === 0
+        ? r
+        : await api(`/api/quiz/session?sessionId=${encodeURIComponent(sessionId)}&index=${target}`);
+      state.session = cur.session;
+      state.index = cur.index || 0;
+      state.question = cur.question;
+      state.answer = cur.answer;
+      state.statuses = r.statuses;
+      state.revealed = Boolean(cur.answer);
+      state.selected = {};
+      state.elapsed = 0;
+      state.skipped = new Set();
+      state.view = 'practice';
+      renderPractice();
+    } catch (e) { toast('无法继续该练习：' + e.message, false); }
+  }
+
   async function finish() {
     try {
       const report = await post('/api/quiz/finish', { sessionId: state.session.id });
@@ -520,12 +594,36 @@
       <h3><span class="dot"></span>本次错题 <span class="small muted2" style="margin-left:auto;font-weight:400">已自动收入错题本</span></h3>
       <div class="rows">${report.wrongItems.map((w, i) => `
         <div class="row"><div class="grow"><div class="t"><span class="tag ${w.subjectKey}">${esc(SUB_COLOR_SHORT(w.subjectKey))}</span> ${esc(w.title)}</div>
-        <div class="s">${esc(w.chapterName || '')}</div></div></div>`).join('')}</div>
+        <div class="s">${esc(w.chapterName || '')}${w.pointName ? ' · ' + esc(w.pointName) : ''}</div></div>
+        <button class="btn sm" data-open-wrong="${w.sourceId}">查看</button></div>`).join('')}</div>
+      <div class="mt"><button class="btn pri sm" id="redoSessionWrong">只练本次错题</button></div>
     </div>` : '<div class="card mt2"><h3><span class="dot"></span>本次全部正确，继续保持</h3></div>'}
     `;
     $('#backStart').addEventListener('click', () => renderStart());
     $('#reWrong').addEventListener('click', () => startSession({ mode: 'wrong' }));
     $('#openWrongBook').addEventListener('click', () => renderCollection('wrong'));
+    const redo = $('#redoSessionWrong');
+    if (redo) redo.addEventListener('click', () => {
+      startSession({ sourceIds: report.wrongItems.map((x) => x.sourceId), count: Math.min(report.wrongItems.length, 20), mode: 'random' });
+    });
+    $$('[data-open-wrong]').forEach((b) => b.addEventListener('click', () => {
+      const item = report.wrongItems.find((x) => String(x.sourceId) === b.dataset.openWrong);
+      if (item) showWrongDetail(item);
+    }));
+  }
+
+  // 报告页弹出本次错题详情（含答案解析），避免切页丢失复盘场景
+  function showWrongDetail(item) {
+    if (typeof openModal !== 'function') return;
+    openModal(`
+      <h3><span class="dot"></span>错题复盘</h3>
+      <div class="qtitle">${md(item.content || item.title)}</div>
+      ${item.pointName ? `<div class="mt small"><span class="tag warn">知识点：${esc(item.pointName)}</span></div>` : ''}
+      <h4 class="mt">解析</h4>
+      <div class="qexplain">${md((item.explanation && item.explanation.trim()) || (item.answerText && item.answerText.trim()) || '该题暂无详细解析，可对照原题讨论。')}</div>
+      <div class="actions"><button class="btn pri" id="closeWrong">关闭</button></div>
+    `);
+    $('#closeWrong').addEventListener('click', () => closeModal());
   }
 
   function SUB_COLOR_SHORT(key) {

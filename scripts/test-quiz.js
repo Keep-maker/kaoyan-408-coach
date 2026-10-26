@@ -143,6 +143,29 @@ function pickAndAnswer(userId, session, sourceId, answer) {
   check(!String(quiz.learningPointId(strayFileQuestion)).startsWith('os4-'),
     '源站跨科错分的题目不会污染另一科掌握度');
 
+  // 新增强：按指定题号组卷（报告页“只练本次错题”），仅返回题库中存在的题
+  const sessionByIds = quiz.createSession(userId, {
+    sourceIds: [101, 102, 999999],
+    count: 10,
+    mode: 'random'
+  });
+  check(sessionByIds.session.total === 2,
+    '按 sourceIds 组卷只包含存在的题');
+  const byIds = sessionByIds.statuses.map((x) => x.sourceId).sort();
+  check(byIds.join(',') === '101,102', 'sourceIds 组卷返回指定题目');
+
+  // 新增强：概览返回最近练习与薄弱点候选
+  const over2 = quiz.overview(userId);
+  check(Array.isArray(over2.sessions) && over2.sessions.length >= 1, '概览返回最近练习列表');
+  check(Array.isArray(over2.weak) && over2.weak.length > 0, '概览返回薄弱点候选');
+  check('pointId' in (over2.weak[0] || {}), '薄弱点候选含知识点 id');
+
+  // 新增强：报告错题条目带题干与解析，供报告页复盘
+  const report2 = quiz.buildReport(userId, quiz.getSession(userId, started.session.id));
+  const wrongItem = report2.wrongItems.find((x) => x.sourceId === 101);
+  check(wrongItem && String(wrongItem.content || '').length > 0, '报告错题带题干');
+  check(wrongItem && (wrongItem.explanation || wrongItem.answerText), '报告错题带解析/答案');
+
   console.log(`通过 ${passed} 项检查`);
   db.close();
   for (const suffix of ['', '-shm', '-wal']) {

@@ -330,6 +330,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .qcell.ok{background:var(--ok-soft);border-color:#a9dfcd;color:var(--ok)}
 .qcell.bad{background:var(--bad-soft);border-color:#f3bbb5;color:var(--bad)}
 .qcell.self{background:var(--warn-soft);border-color:#f0d09f;color:var(--warn)}
+.qcell.skip{background:#f0f2f7;border-color:#c8ced8;color:var(--ink3);box-shadow:inset 0 0 0 1px #dde2ea;text-decoration:line-through}
 .qcell.now{outline:2px solid var(--brand);outline-offset:1px}
 .qcell.mini{display:inline-grid;width:16px;height:16px;vertical-align:-3px;margin:0 2px 0 5px;cursor:default}
 .qlegend{display:flex;align-items:center;flex-wrap:wrap;margin-top:12px}
@@ -344,6 +345,9 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .qtitle .katex,.qopt-text .katex,.qexplain .katex{font-size:1.04em}
 .qtitle .katex-display,.qexplain .katex-display{margin:.55em 0}
 .q-inline-img{display:block;max-width:min(100%,720px);height:auto;margin:10px auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+
+.weak-chips{display:flex;flex-wrap:wrap;gap:7px}
+.weak-chip{flex:1 1 auto;min-width:0;justify-content:flex-start;text-align:left}
 
 @media(max-width:1080px){
   .qstat-row{grid-template-columns:repeat(3,minmax(0,1fr))}
