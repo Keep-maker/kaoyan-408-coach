@@ -124,6 +124,25 @@ npm run repair:bank # 题库数据治理：修错标科目 / 标记重复题 / �
 
 环境变量：`PORT`（默认 4080）、`HOST`（默认 127.0.0.1）、`KY_DB`（数据库路径）、`KY_LLM_KEY` / `KY_LLM_MODEL` / `KY_LLM_BASE`（大模型接入）。
 
+### 部署到 Cloudflare Pages（前端）+ 云服务器（后端）
+
+前端静态资源（`public/`）与 Pages Function（`functions/api/`）整体部署到 Cloudflare Pages，后端仍跑在云服务器上。这样前端、API、会话 Cookie 全程同源，后端无需改动。
+
+```bash
+# 1. 在 Cloudflare 创建 Pages 项目（首次）
+cf pages projects create --name kaoyan-408 --production-branch main \
+  --build-config-build-command "true" --build-config-destination-dir public
+
+# 2. 设置后端基址环境变量（Pages 项目环境变量，指向云服务器上的 408 后端）
+#    KY_BACKEND_ORIGIN=https://kaoyan-api.chatbi.icu
+
+# 3. 重新部署（本地直接上传 public/ 与 functions/）
+cf pages projects deployments create kaoyan-408 \
+  --branch main --pages-build-output-dir public
+```
+
+后端基址也可在 `functions/api/[[path]].js` 里改默认值。若后端在云服务器上，请确保 Pages 边缘能访问到它（公网 HTTPS 或经 Cloudflare Tunnel）。
+
 ### 接入大模型（可选）
 
 配置优先级：**环境变量 > `config/llm.json` > `~/.bailian/config.json`**。

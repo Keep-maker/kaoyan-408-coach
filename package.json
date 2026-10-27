@@ -14,6 +14,8 @@
     "fix:chapters": "node scripts/fix-null-chapters.js",
     "sync:exams": "node scripts/sync-exams.js",
     "repair:bank": "node scripts/repair-question-bank.js",
+    "pages:preview": "cf pages dev",
+    "pages:deploy": "cf pages projects deployments create kaoyan-408 --branch main --pages-build-output-dir public",
     "test": "node scripts/test-engine.js && node scripts/test-quiz.js",
     "test:quiz": "node scripts/test-quiz.js"
   },
