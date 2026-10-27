@@ -441,17 +441,20 @@
 
     const done = papers.filter((p) => p.lastScore !== null && p.lastScore !== undefined);
     const avg = done.length ? Math.round(done.reduce((n, p) => n + p.lastScore, 0) / done.length * 10) / 10 : null;
+    const years = papers.map((p) => p.year).filter(Boolean);
+    const span = years.length ? Math.min(...years) + '—' + Math.max(...years) : '';
+    const totalQ = papers.reduce((n, p) => n + Number(p.questionCount || 0), 0);
 
     body.innerHTML = `
     <div class="card">
-      <h3><span class="dot"></span>真题模考 <span class="small muted2" style="margin-left:auto;font-weight:400">2009—2025 · 16 套 · 752 题</span></h3>
+      <h3><span class="dot"></span>真题模考 <span class="small muted2" style="margin-left:auto;font-weight:400">${span} · ${papers.length} 套 · ${totalQ} 题</span></h3>
       <div class="qstat-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
         <div class="qstat"><div class="v">${papers.length}</div><div class="k">可用套数</div></div>
         <div class="qstat"><div class="v">${done.length}</div><div class="k">已做过</div></div>
         <div class="qstat"><div class="v">${avg !== null ? avg : '—'}</div><div class="k">平均得分 / 150</div></div>
         <div class="qstat"><div class="v">${papers[0].durationMin}</div><div class="k">考试时长（分钟）</div></div>
       </div>
-      <div class="mt small muted">整套限时模考：${papers[0].questionCount} 题、${papers[0].durationMin} 分钟，客观题自动判分，综合应用题按自评折算，合计 ${papers[0].totalScore} 分。综合题在源题库按 10 分/题计入参考分，与实际卷面分值可能略有差异。</div>
+      <div class="mt small muted">整套限时模考：${papers[0].questionCount} 题、${papers[0].durationMin} 分钟，客观题自动判分，综合应用题按自评折算，合计 ${papers[0].totalScore} 分。综合应用题的卷面分值源站未给出，按 70 分在各大题间均分计入参考分，与实际卷面分值可能略有差异。</div>
     </div>
 
     <div class="card mt2">
