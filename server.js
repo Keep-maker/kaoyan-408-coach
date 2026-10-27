@@ -14,6 +14,7 @@ const agentReply = require('./lib/agent-reply');
 const agentCore = require('./lib/agent');
 const session = require('./lib/session');
 const quiz = require('./lib/quiz-service');
+const exam = require('./lib/exam-service');
 const { stripEmoji } = require('./lib/text');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const als = new AsyncLocalStorage();
@@ -538,6 +539,81 @@ route('GET', '/api/quiz/report', (req, url) => {
   const session = q.get('SELECT * FROM quiz_sessions WHERE id=? AND user_id=?', String(sessionId || ''), userId);
   if (!session) throw new Error('练习记录不存在');
   return quiz.buildReport(userId, session);
+});
+
+// ---------- 历年真题（整套限时模考） ----------
+route('GET', '/api/exam/overview', () => ({
+  ready: exam.tableReady(),
+  papers: exam.listPapers(uid()),
+  syncing: Boolean(syncTask)
+}));
+
+route('POST', '/api/exam/start', async (req) => {
+  const b = await readBody(req);
+  return exam.createExamSession(uid(), b.examId);
+});
+
+route('GET', '/api/exam/state', (req, url) => {
+  const examId = url.searchParams.get('sessionId');
+  return exam.examState(uid(), examId);
+});
+
+route('GET', '/api/exam/report', (req, url) => {
+  const userId = uid();
+  const report = exam.examReport(userId, url.searchParams.get('sessionId'));
+  if (!report) throw new Error('该练习不是真题模考');
+  return report;
+});
+
+// ---------- 单题笔记 / 举一反三 ----------
+route('POST', '/api/quiz/note', async (req) => {
+  const b = await readBody(req);
+  return quiz.saveNote(uid(), b.sourceId, b.note);
+});
+
+route('GET', '/api/quiz/similar', (req, url) => quiz.similarQuestions(
+  uid(),
+  Number(url.searchParams.get('sourceId')),
+  Number(url.searchParams.get('limit') || 6)
+));
+
+// ---------- 题目追问：用大模型针对本题解析做答疑（流式） ----------
+route('POST', '/api/quiz/explain', async (req, _url, res) => {
+  const b = await readBody(req);
+  const row = quiz.getQuestionRow(b.sourceId);
+  if (!row) throw new Error('题目不存在');
+  const question = String(b.question || '请把这道题的解析讲得更细一些').slice(0, 300);
+  if (!llm.available() || llm.health().status === 'unavailable') {
+    return send(res, 200, { error: '大模型当前不可用，可先看下方详细解析' });
+  }
+  const options = quiz.normalizeOptions(row);
+  const correct = options.filter((o) => o.isCorrect).map((o) => o.key).join('、') || '见解析';
+  const messages = [
+    { role: 'system', content: '你是 408 计算机考研辅导老师。只围绕用户给出的这道题作答：先判断题目考查的知识点，再逐步讲解，最后点出易错处。语言精炼，中文，不要使用 emoji，不要输出与本题无关的内容。' },
+    { role: 'user', content: [
+      '题目：' + String(row.content || row.title || ''),
+      options.length ? '选项：' + options.map((o) => o.key + '. ' + o.content).join('；') : '',
+      '正确答案：' + correct,
+      '原解析：' + String(row.explanation || '（源站未提供）').slice(0, 3000),
+      '我的追问：' + question
+    ].filter(Boolean).join('\n') }
+  ];
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive'
+  });
+  const push = (obj) => res.write('data: ' + JSON.stringify(obj) + '\n\n');
+  try {
+    await llm.chatStream(messages, {
+      temperature: 0.4, maxTokens: 1600, timeoutMs: 120000,
+      onDelta: (delta) => push({ delta: stripEmoji(delta) })
+    });
+    push({ done: true });
+  } catch (e) {
+    push({ error: stripEmoji(e.message || '解析生成失败') });
+  }
+  res.end();
 });
 
 // ---------- 智能体（Agent）：对话式督导，可读写真实数据 ----------

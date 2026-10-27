@@ -12,6 +12,8 @@
     "sync:quiz": "node scripts/import-question-bank.js",
     "sync:quiz:extra": "node scripts/sync-quiz-extra.js",
     "fix:chapters": "node scripts/fix-null-chapters.js",
+    "sync:exams": "node scripts/sync-exams.js",
+    "repair:bank": "node scripts/repair-question-bank.js",
     "test": "node scripts/test-engine.js && node scripts/test-quiz.js",
     "test:quiz": "node scripts/test-quiz.js"
   },
